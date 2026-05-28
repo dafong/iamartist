@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { check } from "@tauri-apps/plugin-updater";
+import { ask } from "@tauri-apps/plugin-dialog";
 import { open } from "@tauri-apps/plugin-dialog";
 import { parsePsd, exportLayers, smbUpload } from "./api";
 import LayerList from "./components/LayerList";
@@ -26,6 +29,26 @@ export default function App() {
   const [uploadResults, setUploadResults] = useState<UploadResult[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [updateStatus, setUpdateStatus] = useState<"idle" | "checking" | "downloading" | "ready">("idle");
+
+  useEffect(() => {
+    checkForUpdate();
+  }, []);
+
+  async function checkForUpdate() {
+    setUpdateStatus("checking");
+    try {
+      const update = await check();
+      if (!update?.available) { setUpdateStatus("idle"); return; }
+      setUpdateStatus("ready");
+      const yes = await ask(`发现新版本 ${update.version}，是否立即更新？`, { title: "有新版本", kind: "info" });
+      if (!yes) return;
+      setUpdateStatus("downloading");
+      await update.downloadAndInstall();
+    } catch {
+      setUpdateStatus("idle");
+    }
+  }
 
   async function handlePickPsd() {
     const result = await open({ filters: [{ name: "PSD", extensions: ["psd"] }] });
@@ -94,9 +117,15 @@ export default function App() {
 
   return (
     <div className="app">
-      <header>
+      <header
+        data-tauri-drag-region
+        onMouseDown={(e) => { if (e.button === 0) getCurrentWindow().startDragging(); }}
+      >
         <h1>iamartist</h1>
         <p className="subtitle">PSD 图层导出 · SMB 上传</p>
+        {updateStatus === "checking" && <p className="update-tip">检查更新中…</p>}
+        {updateStatus === "downloading" && <p className="update-tip">下载更新中…</p>}
+        {updateStatus === "ready" && <p className="update-tip update-tip--ready">发现新版本</p>}
       </header>
 
       {error && <div className="error-banner">{error}</div>}

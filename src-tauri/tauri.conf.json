@@ -16,7 +16,9 @@
         "width": 1100,
         "height": 760,
         "minWidth": 900,
-        "minHeight": 600
+        "minHeight": 600,
+        "decorations": false,
+        "alwaysOnTop": true
       }
     ],
     "security": {
@@ -37,6 +39,12 @@
   "plugins": {
     "shell": {
       "open": true
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ2MjA5NkQ2QjBCOUY5NkMKUldScytibXcxcFlnUnI4UHZhUEZvWDdtWUFmZXg3ZkxsaVBIMFZTQjVMdUNFR0lVejE1bGk1QTYK",
+      "endpoints": [
+        "https://your-update-server.com/iamartist/{{target}}/{{arch}}/{{current_version}}"
+      ]
     }
   }
 }

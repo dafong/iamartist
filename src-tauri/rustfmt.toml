@@ -1,0 +1,30 @@
+# Rust formatting configuration
+
+# Maximum width of each line
+max_width = 120
+
+# Number of spaces per tab
+tab_spaces = 4
+
+# Always use Unix line endings
+newline_style = "Unix"
+
+# Merge multiple imports into a single use statement when possible
+merge_imports = true
+
+# Reorder impl items to put type and const definitions before methods
+reorder_impl_items = false
+
+# Report all formatting errors, not just the first few
+report_todo = "Never"
+report_fixme = "Never"
+
+# Use edition 2021 style for formatting
+edition = "2021"
+
+# Format code inside macro calls
+format_macro_matchers = true
+format_macro_bodies = true
+
+# Preserve order of import groups (separated by blank lines)
+reorder_imports = true

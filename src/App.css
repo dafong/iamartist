@@ -33,7 +33,10 @@
 header {
   text-align: center;
   padding: 20px 0 8px;
+  cursor: grab;
+  user-select: none;
 }
+header:active { cursor: grabbing; }
 
 header h1 {
   font-size: 2rem;
@@ -46,6 +49,13 @@ header h1 {
   font-size: 0.9rem;
   margin-top: 4px;
 }
+
+.update-tip {
+  font-size: 0.75rem;
+  color: #aaa;
+  margin-top: 4px;
+}
+.update-tip--ready { color: #2563eb; font-weight: 500; }
 
 /* ── Section / Panel ── */
 .section {

@@ -2,8 +2,8 @@ mod psd_handler;
 mod smb_handler;
 
 use psd_handler::{ExportFormat, LayerInfo};
-use smb_handler::SmbConfig;
 use serde::{Deserialize, Serialize};
+use smb_handler::SmbConfig;
 
 // ─── PSD commands ────────────────────────────────────────────────────────────
 
@@ -17,7 +17,11 @@ pub struct PsdMeta {
 #[tauri::command]
 fn parse_psd(path: String) -> Result<PsdMeta, String> {
     let (width, height, layers) = psd_handler::parse_psd(&path).map_err(|e| e.to_string())?;
-    Ok(PsdMeta { width, height, layers })
+    Ok(PsdMeta {
+        width,
+        height,
+        layers,
+    })
 }
 
 #[derive(Deserialize)]
@@ -85,6 +89,7 @@ fn smb_test(config: SmbConfig) -> Result<Vec<String>, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
