@@ -16,8 +16,8 @@ pub struct LayerInfo {
 }
 
 /// Parse a PSD file and return metadata for all layers.
-pub fn parse_psd(path: &str) -> Result<(u32, u32, Vec<LayerInfo>)> {
-    let bytes = std::fs::read(path).with_context(|| format!("reading {path}"))?;
+pub fn parse_psd<P: AsRef<Path>>(path: &P) -> Result<(u32, u32, Vec<LayerInfo>)> {
+    let bytes = std::fs::read(path).with_context(|| format!("reading {}", path.as_ref().display()))?;
     let psd = Psd::from_bytes(&bytes).map_err(|e| anyhow::anyhow!("{e:?}"))?;
 
     let width = psd.width();
@@ -43,12 +43,7 @@ pub fn parse_psd(path: &str) -> Result<(u32, u32, Vec<LayerInfo>)> {
 
 /// Export selected layers to PNG files in output_dir.
 /// Returns list of (layer_name, output_file_path).
-pub fn export_layers(
-    psd_path: &str,
-    layer_ids: &[usize],
-    output_dir: &str,
-    format: ExportFormat,
-) -> Result<Vec<(String, String)>> {
+pub fn export_layers(psd_path: &str, layer_ids: &[usize], output_dir: &str, format: ExportFormat) -> Result<Vec<(String, String)>> {
     let bytes = std::fs::read(psd_path).with_context(|| format!("reading {psd_path}"))?;
     let psd = Psd::from_bytes(&bytes).map_err(|e| anyhow::anyhow!("{e:?}"))?;
     let layers = psd.layers();
@@ -58,9 +53,7 @@ pub fn export_layers(
     let mut results = Vec::new();
 
     for &id in layer_ids {
-        let layer = layers
-            .get(id)
-            .with_context(|| format!("layer index {id} out of range"))?;
+        let layer = layers.get(id).with_context(|| format!("layer index {id} out of range"))?;
 
         let w = layer.width() as u32;
         let h = layer.height() as u32;
@@ -71,15 +64,11 @@ pub fn export_layers(
 
         let rgba: Vec<u8> = layer.rgba();
 
-        let img: ImageBuffer<Rgba<u8>, Vec<u8>> =
-            ImageBuffer::from_raw(w, h, rgba).with_context(|| "ImageBuffer size mismatch")?;
+        let img: ImageBuffer<Rgba<u8>, Vec<u8>> = ImageBuffer::from_raw(w, h, rgba).with_context(|| "ImageBuffer size mismatch")?;
 
         let safe_name = sanitize_filename(layer.name());
         let ext = format.extension();
-        let out_path = Path::new(output_dir)
-            .join(format!("{safe_name}.{ext}"))
-            .to_string_lossy()
-            .to_string();
+        let out_path = Path::new(output_dir).join(format!("{safe_name}.{ext}")).to_string_lossy().to_string();
 
         match format {
             ExportFormat::Png => img.save(&out_path)?,
@@ -115,4 +104,21 @@ fn sanitize_filename(name: &str) -> String {
     name.chars()
         .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::env;
+    use std::path::PathBuf;
+
+    use super::parse_psd;
+
+    #[test]
+    fn test_parse_psd() {
+        let mut path = env::current_dir().unwrap();
+        path.push(PathBuf::from_iter(vec!["..", "psd", "童年稻草堆.psd"]));
+        let result = parse_psd(&path).unwrap();
+        println!("{}", result.2.iter().map(|l| l.name.as_str()).collect::<Vec<&str>>().join("\n"));
+        // parse_psd
+    }
 }

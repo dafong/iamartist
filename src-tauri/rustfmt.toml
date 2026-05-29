@@ -1,7 +1,7 @@
 # Rust formatting configuration
 
 # Maximum width of each line
-max_width = 120
+max_width = 150
 
 # Number of spaces per tab
 tab_spaces = 4
