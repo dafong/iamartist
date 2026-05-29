@@ -1,3 +1,4 @@
+mod key_listener;
 mod psd_handler;
 mod smb_handler;
 
@@ -112,6 +113,13 @@ fn smb_test(config: SmbConfig) -> Result<Vec<String>, String> {
     smb_handler::test_connection(&config).map_err(|e| e.to_string())
 }
 
+// ─── Key count command ────────────────────────────────────────────────────────
+
+#[tauri::command]
+fn get_key_count() -> u64 {
+    key_listener::total()
+}
+
 // ─── App entry point ──────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -127,7 +135,12 @@ pub fn run() {
             export_composite,
             smb_upload,
             smb_test,
+            get_key_count,
         ])
+        .setup(|app| {
+            key_listener::start(app.handle().clone());
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

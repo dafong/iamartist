@@ -13,14 +13,18 @@
     "windows": [
       {
         "title": "iamartist",
-        "width": 1100,
-        "height": 760,
-        "minWidth": 900,
-        "minHeight": 600,
+        "width": 480,
+        "height": 280,
+        "minWidth": 320,
+        "minHeight": 280,
+        "maxHeight": 280,
+        "resizable": true,
         "decorations": false,
+        "transparent": true,
         "alwaysOnTop": true
       }
     ],
+    "macOSPrivateApi": true,
     "security": {
       "csp": null
     }
@@ -39,8 +43,7 @@
   },
   "plugins": {
     "shell": {
-      "open": true,
-      "scope": [{"name": "binaries/psd_composite", "sidecar": true}]
+      "open": true
     },
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ2MjA5NkQ2QjBCOUY5NkMKUldScytibXcxcFlnUnI4UHZhUEZvWDdtWUFmZXg3ZkxsaVBIMFZTQjVMdUNFR0lVejE1bGk1QTYK",
