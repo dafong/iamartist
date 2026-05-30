@@ -2,3 +2,7 @@ node_modules/
 dist/
 src-tauri/target/
 src-tauri/gen/schemas/
+public/.DS_Store
+.DS_Store
+src-python/build
+src-python/.venv

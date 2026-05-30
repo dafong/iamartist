@@ -30,7 +30,3 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 # Error handling
 anyhow = "1"
 thiserror = "1"
-
-# Global keyboard listener (Windows/Linux only; macOS uses CGEventTap directly)
-[target.'cfg(not(target_os = "macos"))'.dependencies]
-rdev = "0.5"

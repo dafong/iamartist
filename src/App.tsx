@@ -1,6 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { parsePsd } from "./api";
 // import SpineView from "./components/SpineView";
@@ -14,10 +13,20 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [keyCount, setKeyCount] = useState(0);
+  const keyCountRef = useRef(0);
 
+  // Listen to keyboard events when window is focused
   useEffect(() => {
-    const unlisten = listen<number>("key-press", (e) => setKeyCount(e.payload));
-    return () => { unlisten.then((f) => f()); };
+    const handleKeyDown = () => {
+      keyCountRef.current += 1;
+      setKeyCount(keyCountRef.current);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
   }, []);
 
   async function handlePickPsd() {
@@ -58,10 +67,10 @@ export default function App() {
 
         <button className="tb-btn tb-btn--primary" onClick={handlePickPsd} disabled={busy} title="选择 PSD 文件">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <rect x="2" y="1" width="9" height="11" rx="1" stroke="currentColor" strokeWidth="1.4"/>
-            <path d="M7 1v4h4" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
-            <path d="M5 14h7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
-            <path d="M8.5 11v3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+            <rect x="2" y="1" width="9" height="11" rx="1" stroke="currentColor" strokeWidth="1.4" />
+            <path d="M7 1v4h4" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+            <path d="M5 14h7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+            <path d="M8.5 11v3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
           </svg>
           <span>打开 PSD</span>
         </button>
@@ -79,7 +88,7 @@ export default function App() {
 
         <div className="tb-spacer" />
 
-        <span className="tb-keycount" title="全局按键次数">{keyCount}</span>
+        <span className="tb-keycount" title="窗口按键次数">{keyCount}</span>
       </div>
     </div>
   );

@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "ZtJ1sqNgwCsSstP4sTts6k3bOCG5X76PClJWMakQHfP9OLbNFaVbySdtMFiFER8USYkIg/2+7X37qOqeB7as/A==",
+  "success": true,
+  "projectFilePath": "/Users/lunar/Downloads/BongoCat_Output/Scripts/Assembly-CSharp/Assembly-CSharp.csproj",
+  "expectedPackageFiles": [
+    "/Users/lunar/.nuget/packages/microsoft.netframework.referenceassemblies/1.0.2/microsoft.netframework.referenceassemblies.1.0.2.nupkg.sha512",
+    "/Users/lunar/.nuget/packages/microsoft.netframework.referenceassemblies.net40/1.0.2/microsoft.netframework.referenceassemblies.net40.1.0.2.nupkg.sha512"
+  ],
+  "logs": []
+}

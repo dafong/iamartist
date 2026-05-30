@@ -1,4 +1,3 @@
-mod key_listener;
 mod psd_handler;
 mod smb_handler;
 
@@ -18,11 +17,7 @@ pub struct PsdMeta {
 #[tauri::command]
 fn parse_psd(path: String) -> Result<PsdMeta, String> {
     let (width, height, layers) = psd_handler::parse_psd(&path).map_err(|e| e.to_string())?;
-    Ok(PsdMeta {
-        width,
-        height,
-        layers,
-    })
+    Ok(PsdMeta { width, height, layers })
 }
 
 #[derive(Deserialize)]
@@ -41,9 +36,7 @@ pub struct ExportedFile {
 
 #[tauri::command]
 fn export_layers(req: ExportRequest) -> Result<Vec<ExportedFile>, String> {
-    let results =
-        psd_handler::export_layers(&req.psd_path, &req.layer_ids, &req.output_dir, req.format)
-            .map_err(|e| e.to_string())?;
+    let results = psd_handler::export_layers(&req.psd_path, &req.layer_ids, &req.output_dir, req.format).map_err(|e| e.to_string())?;
 
     Ok(results
         .into_iter()
@@ -113,13 +106,6 @@ fn smb_test(config: SmbConfig) -> Result<Vec<String>, String> {
     smb_handler::test_connection(&config).map_err(|e| e.to_string())
 }
 
-// ─── Key count command ────────────────────────────────────────────────────────
-
-#[tauri::command]
-fn get_key_count() -> u64 {
-    key_listener::total()
-}
-
 // ─── App entry point ──────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -129,18 +115,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![
-            parse_psd,
-            export_layers,
-            export_composite,
-            smb_upload,
-            smb_test,
-            get_key_count,
-        ])
-        .setup(|app| {
-            key_listener::start(app.handle().clone());
-            Ok(())
-        })
+        .invoke_handler(tauri::generate_handler![parse_psd, export_layers, export_composite, smb_upload, smb_test,])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
