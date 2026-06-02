@@ -27,3 +27,7 @@ export const smbUpload = (
 
 export const smbTest = (config: SmbConfig): Promise<string[]> =>
   invoke("smb_test", { config });
+
+export const read_file = (path:string):Promise<string>=> invoke("read_file",{path})
+
+export const write_file = (path:string,contents:string):Promise<string>=> invoke("write_file",{path,contents})

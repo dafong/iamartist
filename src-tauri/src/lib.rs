@@ -1,6 +1,8 @@
 mod psd_handler;
 mod smb_handler;
 
+use std::fs;
+
 use psd_handler::{ExportFormat, LayerInfo};
 use serde::{Deserialize, Serialize};
 use smb_handler::SmbConfig;
@@ -62,6 +64,22 @@ async fn export_composite(app: tauri::AppHandle, req: CompositeRequest) -> Resul
     }
 }
 
+#[tauri::command]
+fn read_file(path: String) -> Result<String, String> {
+    match fs::read_to_string(&path) {
+        Ok(content) => Ok(content),
+        Err(e) => Err(format!("read file[{}] failed => {}", path, e)),
+    }
+}
+
+#[tauri::command]
+fn write_file(path: String, contents: String) -> Result<(), String> {
+    match fs::write(&path, contents) {
+        Ok(_) => Ok(()),
+        Err(e) => Err(format!("write file[{}] failed =>{}", path, e)),
+    }
+}
+
 // ─── SMB commands ─────────────────────────────────────────────────────────────
 
 #[derive(Deserialize)]
@@ -102,7 +120,15 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![parse_psd, export_layers, export_composite, smb_upload, smb_test,])
+        .invoke_handler(tauri::generate_handler![
+            parse_psd,
+            export_layers,
+            export_composite,
+            smb_upload,
+            smb_test,
+            read_file,
+            write_file
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

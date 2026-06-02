@@ -1,25 +1,25 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
 import { parsePsd } from "./api";
+import { AnimView } from "./components/AnimView";
+import { useBusy, useIncrementKeyCount, useKeyCount, useSetBusy } from "./store";
 // import SpineView from "./components/SpineView";
 import type { PsdMeta } from "./types";
 import "./App.css";
 
-
 export default function App() {
   const [psdPath, setPsdPath] = useState<string | null>(null);
   const [psdMeta, setPsdMeta] = useState<PsdMeta | null>(null);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [keyCount, setKeyCount] = useState(0);
-  const keyCountRef = useRef(0);
+  const busy = useBusy();
+  const setBusy = useSetBusy();
+  const keyCount = useKeyCount();
+  const incrementKeyCount = useIncrementKeyCount();
 
-  // Listen to keyboard events when window is focused
   useEffect(() => {
     const handleKeyDown = () => {
-      keyCountRef.current += 1;
-      setKeyCount(keyCountRef.current);
+      incrementKeyCount();
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -27,14 +27,16 @@ export default function App() {
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, []);
+  }, [incrementKeyCount]);
 
   async function handlePickPsd() {
     const result = await open({ filters: [{ name: "PSD", extensions: ["psd"] }] });
     if (!result) return;
+
     const path = typeof result === "string" ? result : (result as { path: string }).path;
     setBusy(true);
     setError(null);
+
     try {
       const meta = await parsePsd(path);
       setPsdPath(path);
@@ -52,7 +54,7 @@ export default function App() {
     <div className="root">
       {/* 精灵区域 — 透明背景，不可拖拽 */}
       <div className="sprite-area">
-        <img className="sprite" src="/sprite.png" alt="sprite" draggable={false} />
+        <AnimView keyCount={keyCount} />
       </div>
 
       {/* 工具条 — 固定在底部 */}
