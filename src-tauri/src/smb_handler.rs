@@ -6,6 +6,7 @@ use std::process::Command;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SmbConfig {
     pub host: String,
+    /// SMB share name — the top‑level shared folder on the server, e.g. "g_pop"
     pub share: String,
     pub username: String,
     pub password: String,
@@ -51,15 +52,13 @@ mod platform {
         net_use(config, &unc)?;
 
         let remote_base = Path::new(&unc).join(win_dir(&config.remote_dir));
-        std::fs::create_dir_all(&remote_base)
-            .with_context(|| format!("mkdir {}", remote_base.display()))?;
+        std::fs::create_dir_all(&remote_base).with_context(|| format!("mkdir {}", remote_base.display()))?;
 
         let mut results = Vec::new();
         for local in local_files {
             let name = file_name(local)?;
             let dst = remote_base.join(name);
-            std::fs::copy(local, &dst)
-                .with_context(|| format!("copy → {}", dst.display()))?;
+            std::fs::copy(local, &dst).with_context(|| format!("copy → {}", dst.display()))?;
             results.push((local.clone(), dst.to_string_lossy().into_owned()));
         }
         Ok(results)
@@ -119,8 +118,7 @@ mod platform {
         for local in local_files {
             let name = file_name(local)?;
             let dst = remote_base.join(name);
-            std::fs::copy(local, &dst)
-                .with_context(|| format!("copy → {}", dst.display()))?;
+            std::fs::copy(local, &dst).with_context(|| format!("copy → {}", dst.display()))?;
             results.push((local.clone(), dst.to_string_lossy().into_owned()));
         }
         Ok(results)
@@ -141,20 +139,25 @@ mod platform {
 
     struct MountPoint {
         path: std::path::PathBuf,
+        /// true → we mounted it, so we must unmount on drop
+        owned: bool,
     }
 
     impl MountPoint {
         fn mount(config: &SmbConfig) -> Result<Self> {
+            // 1. Check if this share is already mounted somewhere on the system
+            if let Some(existing) = find_existing_mount(config) {
+                return Ok(Self {
+                    path: existing,
+                    owned: false, // don't unmount — we didn't mount it
+                });
+            }
+
+            // 2. Fresh mount — mount_smbfs requires the directory to exist already
             let dir = format!("/tmp/iamartist_smb_{}", std::process::id());
             std::fs::create_dir_all(&dir)?;
 
-            let url = format!(
-                "smb://{}:{}@{}/{}",
-                percent_encode(&config.username),
-                percent_encode(&config.password),
-                config.host,
-                config.share,
-            );
+            let url = build_smb_url(config);
 
             let status = Command::new("mount_smbfs")
                 .args([&url, &dir])
@@ -165,15 +168,65 @@ mod platform {
                 let _ = std::fs::remove_dir(&dir);
                 anyhow::bail!("mount_smbfs 失败，请检查主机/凭据");
             }
-            Ok(Self { path: dir.into() })
+            Ok(Self {
+                path: dir.into(),
+                owned: true,
+            })
         }
     }
 
     impl Drop for MountPoint {
         fn drop(&mut self) {
-            let _ = Command::new("umount").arg(&self.path).status();
-            let _ = std::fs::remove_dir(&self.path);
+            if self.owned {
+                let _ = Command::new("umount").arg(&self.path).status();
+                let _ = std::fs::remove_dir(&self.path);
+            }
         }
+    }
+
+    /// Search the system mount table for an existing mount of the same SMB share.
+    fn find_existing_mount(config: &SmbConfig) -> Option<std::path::PathBuf> {
+        if let Ok(out) = Command::new("mount").output() {
+            let info = String::from_utf8_lossy(&out.stdout);
+            // mount output shows the URL: //domain;user@host/share or //user@host/share
+            let user_part = match config.username.split_once('\\') {
+                Some((d, u)) => format!("{};{}", d, u),
+                None => config.username.clone(),
+            };
+            let needle = format!("//{}@{}", user_part, config.host);
+            for line in info.lines() {
+                if line.contains(&needle) && line.contains(&config.share) {
+                    // mount output: //user@host/share on /path (smbfs, ...)
+                    if let Some(part) = line.split(" on ").nth(1) {
+                        let path = part.split_whitespace().next().unwrap_or("");
+                        if !path.is_empty() {
+                            return Some(path.into());
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Build the SMB URL, handling domain\user format → domain;user.
+    fn build_smb_url(config: &SmbConfig) -> String {
+        let user = &config.username;
+        let (domain, user) = match user.split_once('\\') {
+            Some((d, u)) => (Some(d), u),
+            None => (None, user.as_str()),
+        };
+        let user_part = match domain {
+            Some(d) => format!("{};{}", d, user),
+            None => user.to_string(),
+        };
+        format!(
+            "smb://{}:{}@{}/{}",
+            percent_encode(&user_part),
+            percent_encode(&config.password),
+            config.host,
+            config.share,
+        )
     }
 
     /// Percent-encode characters that would break an SMB URL.
@@ -198,4 +251,39 @@ fn file_name(path: &str) -> Result<&str> {
         .file_name()
         .and_then(|n| n.to_str())
         .with_context(|| format!("invalid filename: {path}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::env;
+
+    use super::{test_connection, upload_files, SmbConfig};
+
+    #[test]
+    fn test_smb_upload() {
+        let cfg = SmbConfig {
+            host: "disk.happyelements.net".to_string(),
+            share: "g_pop".to_string(),
+            username: "xinlei.fan".to_string(),
+            password: "Oi9klk97&".to_string(),
+            remote_dir: "unity资源".to_string(),
+            workgroup: None,
+        };
+        let upload_file = env::current_dir().unwrap().join("..").join("export.png");
+
+        upload_files(&cfg, &vec![upload_file.display().to_string()]).unwrap();
+    }
+
+    #[test]
+    fn test_smb_conn() {
+        let cfg = SmbConfig {
+            host: "disk.happyelements.net".to_string(),
+            share: "g_pop".to_string(),
+            username: "xinlei.fan".to_string(),
+            password: "Oi9klk97&".to_string(),
+            remote_dir: "unity资源".to_string(),
+            workgroup: None,
+        };
+        test_connection(&cfg).expect("connect failed");
+    }
 }

@@ -1,6 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
-  ExportedFile,
   ExportFormat,
   PsdMeta,
   SmbConfig,
@@ -13,11 +12,11 @@ export const parsePsd = (path: string): Promise<PsdMeta> =>
 export const exportLayers = (
   psdPath: string,
   layerIds: number[],
-  outputDir: string,
+  outputPath: string,
   format: ExportFormat
-): Promise<ExportedFile[]> =>
+): Promise<string> =>
   invoke("export_layers", {
-    req: { psd_path: psdPath, layer_ids: layerIds, output_dir: outputDir, format },
+    req: { psd_path: psdPath, layer_ids: layerIds, output_path: outputPath, format },
   });
 
 export const smbUpload = (

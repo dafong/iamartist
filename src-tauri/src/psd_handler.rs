@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
-use image::{ImageBuffer, Rgba};
-use psd::Psd;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+use std::process::Command;
 
+/// Metadata for a single layer.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LayerInfo {
     pub id: usize,
@@ -15,73 +15,93 @@ pub struct LayerInfo {
     pub visible: bool,
 }
 
-/// Parse a PSD file and return metadata for all layers.
-pub fn parse_psd<P: AsRef<Path>>(path: &P) -> Result<(u32, u32, Vec<LayerInfo>)> {
-    let bytes = std::fs::read(path).with_context(|| format!("reading {}", path.as_ref().display()))?;
-    let psd = Psd::from_bytes(&bytes).map_err(|e| anyhow::anyhow!("{e:?}"))?;
-
-    let width = psd.width();
-    let height = psd.height();
-
-    let layers: Vec<LayerInfo> = psd
-        .layers()
-        .iter()
-        .enumerate()
-        .map(|(id, layer)| LayerInfo {
-            id,
-            name: layer.name().to_string(),
-            width: layer.width() as u32,
-            height: layer.height() as u32,
-            top: layer.layer_top(),
-            left: layer.layer_left(),
-            visible: true,
-        })
-        .collect();
-
-    Ok((width, height, layers))
+/// Structure expected from Python's `parse` command.
+#[derive(Debug, Deserialize)]
+struct ParseOutput {
+    width: u32,
+    height: u32,
+    layers: Vec<LayerInfo>,
 }
 
-/// Export selected layers to PNG files in output_dir.
-/// Returns list of (layer_name, output_file_path).
-pub fn export_layers(psd_path: &str, layer_ids: &[usize], output_dir: &str, format: ExportFormat) -> Result<Vec<(String, String)>> {
-    let bytes = std::fs::read(psd_path).with_context(|| format!("reading {psd_path}"))?;
-    let psd = Psd::from_bytes(&bytes).map_err(|e| anyhow::anyhow!("{e:?}"))?;
-    let layers = psd.layers();
+/// Structure expected from Python's `export` command.
+#[derive(Debug, Deserialize)]
+struct ExportOutput {
+    path: String,
+}
 
-    std::fs::create_dir_all(output_dir)?;
+/// Locate the Python script.  Looks next to the current executable first,
+/// then falls back to the Cargo manifest directory (dev mode).
+fn python_script_path() -> Result<std::path::PathBuf> {
+    let base = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+        .unwrap_or_else(|| Path::new(".").to_path_buf());
+    let mut path = base.join("psd_handler.py");
+    if !path.exists() {
+        path = Path::new(env!("CARGO_MANIFEST_DIR")).join("psd_handler.py");
+    }
+    Ok(path)
+}
 
-    let mut results = Vec::new();
+fn python_interpreter() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "python"
+    } else {
+        "python3"
+    }
+}
 
-    for &id in layer_ids {
-        let layer = layers.get(id).with_context(|| format!("layer index {id} out of range"))?;
+/// Parse a PSD file and return metadata for all layers.
+pub fn parse_psd<P: AsRef<Path>>(path: &P) -> Result<(u32, u32, Vec<LayerInfo>)> {
+    let script = python_script_path()?;
+    let psd_path = path.as_ref().to_string_lossy().to_string();
 
-        let w = layer.width() as u32;
-        let h = layer.height() as u32;
+    let output = Command::new(python_interpreter())
+        .arg(&script)
+        .arg("parse")
+        .arg(&psd_path)
+        .output()
+        .context("Failed to launch Python process")?;
 
-        if w == 0 || h == 0 {
-            continue;
-        }
-
-        let rgba: Vec<u8> = layer.rgba();
-
-        let img: ImageBuffer<Rgba<u8>, Vec<u8>> = ImageBuffer::from_raw(w, h, rgba).with_context(|| "ImageBuffer size mismatch")?;
-
-        let safe_name = sanitize_filename(layer.name());
-        let ext = format.extension();
-        let out_path = Path::new(output_dir).join(format!("{safe_name}.{ext}")).to_string_lossy().to_string();
-
-        match format {
-            ExportFormat::Png => img.save(&out_path)?,
-            ExportFormat::Jpeg => {
-                let rgb = image::DynamicImage::ImageRgba8(img).to_rgb8();
-                rgb.save(&out_path)?;
-            }
-        }
-
-        results.push((layer.name().to_string(), out_path));
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow::anyhow!("Python error: {}", stderr));
     }
 
-    Ok(results)
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: ParseOutput = serde_json::from_str(&stdout).context("Failed to parse Python output")?;
+
+    Ok((parsed.width, parsed.height, parsed.layers))
+}
+
+/// Composite only the specified layers into a single PNG/JPEG file.
+/// Returns the output file path.
+pub fn export_layers<P: AsRef<Path>>(psd_path: &P, layer_ids: &[usize], output_path: &P, format: ExportFormat) -> Result<String> {
+    let script = python_script_path()?;
+
+    let mut args: Vec<String> = vec![
+        "export".into(),
+        psd_path.as_ref().display().to_string(),
+        output_path.as_ref().display().to_string(),
+        format.extension().to_string(),
+    ];
+    args.extend(layer_ids.iter().map(|id| id.to_string()));
+
+    let output = Command::new(python_interpreter())
+        .arg(&script)
+        .args(&args)
+        .output()
+        .context("Failed to launch Python process")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow::anyhow!("Python error: {}", stderr));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: ExportOutput = serde_json::from_str(&stdout).context("Failed to parse Python export output")?;
+
+    Ok(parsed.path)
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
@@ -92,7 +112,7 @@ pub enum ExportFormat {
 }
 
 impl ExportFormat {
-    fn extension(&self) -> &'static str {
+    pub fn extension(&self) -> &'static str {
         match self {
             ExportFormat::Png => "png",
             ExportFormat::Jpeg => "jpg",
@@ -100,25 +120,37 @@ impl ExportFormat {
     }
 }
 
-fn sanitize_filename(name: &str) -> String {
-    name.chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
-    use std::env;
-    use std::path::PathBuf;
+    // Can be re-implemented with a test PSD file when needed.
 
-    use super::parse_psd;
+    use std::env;
+
+    use crate::psd_handler::ExportFormat;
+
+    use super::{export_layers, parse_psd};
 
     #[test]
     fn test_parse_psd() {
-        let mut path = env::current_dir().unwrap();
-        path.push(PathBuf::from_iter(vec!["..", "psd", "童年稻草堆.psd"]));
-        let result = parse_psd(&path).unwrap();
-        println!("{}", result.2.iter().map(|l| l.name.as_str()).collect::<Vec<&str>>().join("\n"));
-        // parse_psd
+        let path = env::current_dir().unwrap().join("..").join("psd").join("童年稻草堆.psd");
+
+        let (width, height, _) = parse_psd(&path).unwrap();
+        println!("psd size is {}x{}", width, height);
+    }
+    #[test]
+    fn test_parse_export() {
+        let path = env::current_dir().unwrap().join("..").join("psd").join("童年稻草堆.psd");
+        let (_, _, layers) = parse_psd(&path).unwrap();
+        println!(
+            "{}",
+            layers
+                .iter()
+                .map(|l| format!("[{}]={}", &l.name, l.id))
+                .collect::<Vec<String>>()
+                .join("\n")
+        );
+        let output = env::current_dir().unwrap().join("..").join("export.png");
+        let ids = layers.iter().map(|l| l.id).collect::<Vec<usize>>();
+        let _ = export_layers(&path, &ids, &output, ExportFormat::Png).expect("export layers error");
     }
 }

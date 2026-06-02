@@ -23,11 +23,6 @@ export interface SmbConfig {
   workgroup?: string;
 }
 
-export interface ExportedFile {
-  layer_name: string;
-  file_path: string;
-}
-
 export interface UploadResult {
   local_path: string;
   remote_path: string;

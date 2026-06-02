@@ -24,27 +24,14 @@ fn parse_psd(path: String) -> Result<PsdMeta, String> {
 pub struct ExportRequest {
     pub psd_path: String,
     pub layer_ids: Vec<usize>,
-    pub output_dir: String,
+    pub output_path: String,
     pub format: ExportFormat,
 }
 
-#[derive(Serialize)]
-pub struct ExportedFile {
-    pub layer_name: String,
-    pub file_path: String,
-}
-
 #[tauri::command]
-fn export_layers(req: ExportRequest) -> Result<Vec<ExportedFile>, String> {
-    let results = psd_handler::export_layers(&req.psd_path, &req.layer_ids, &req.output_dir, req.format).map_err(|e| e.to_string())?;
-
-    Ok(results
-        .into_iter()
-        .map(|(name, path)| ExportedFile {
-            layer_name: name,
-            file_path: path,
-        })
-        .collect())
+fn export_layers(req: ExportRequest) -> Result<String, String> {
+    let path = psd_handler::export_layers(&req.psd_path, &req.layer_ids, &req.output_path, req.format).map_err(|e| e.to_string())?;
+    Ok(path)
 }
 
 // ─── Composite export command ────────────────────────────────────────────────
