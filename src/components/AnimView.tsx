@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from "react";
+
 export interface AnimViewProps {
   keyCount: number;
 }
@@ -14,24 +16,38 @@ const rightImage = {
   punch: `${assetBase}skins/AcornStick/AcornStickRightPunch.png`,
 };
 
+const PUNCH_DURATION = 100; // ms
+
 export function AnimView({ keyCount }: AnimViewProps) {
-  const leftPunch = keyCount % 4 === 1;
-  const rightPunch = keyCount % 4 === 3;
+  const [punchSide, setPunchSide] = useState<"left" | "right" | null>(null);
+  const prevKeyCount = useRef(keyCount);
+
+  useEffect(() => {
+    if (keyCount === 0) return;
+    if (keyCount > prevKeyCount.current) {
+      const side: "left" | "right" = keyCount % 2 === 1 ? "left" : "right";
+      setPunchSide(side);
+      const timer = setTimeout(() => setPunchSide(null), PUNCH_DURATION);
+      prevKeyCount.current = keyCount;
+      return () => clearTimeout(timer);
+    }
+    prevKeyCount.current = keyCount;
+  }, [keyCount]);
 
   return (
-    <div className="anim-view">
+    <>
       <img
         className="anim-layer anim-layer--left"
-        src={leftPunch ? leftImage.punch : leftImage.normal}
-        alt={leftPunch ? "Left Punch" : "Left"}
+        src={punchSide === "left" ? leftImage.punch : leftImage.normal}
+        alt={punchSide === "left" ? "Left Punch" : "Left"}
         draggable={false}
       />
       <img
         className="anim-layer anim-layer--right"
-        src={rightPunch ? rightImage.punch : rightImage.normal}
-        alt={rightPunch ? "Right Punch" : "Right"}
+        src={punchSide === "right" ? rightImage.punch : rightImage.normal}
+        alt={punchSide === "right" ? "Right Punch" : "Right"}
         draggable={false}
       />
-    </div>
+    </>
   );
 }

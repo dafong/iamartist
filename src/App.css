@@ -8,178 +8,172 @@
 
 html, body, #root {
   width: 100%;
-  height: 280px;
-  overflow: hidden;
+  height: 100%;
   background: transparent;
   -webkit-app-region: no-drag;
 }
 
-/* ── 根容器：全透明，工具条贴底 ── */
+/* ── 根容器 ── */
 .root {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  height: 280px;
+  height: 100%;
+  overflow: hidden;
   background: transparent;
 }
 
-/* ── 精灵区域 ── */
+/* ── 精灵区域：绝对定位锁在顶部，固定高度 ──
+   脱离文档流后，下方面板的插入/移除不会回流 sprite-area，
+   AnimView 的屏幕位置只取决于窗口顶部（已在 JS 中钉死），因此不再抖动。 */
 .sprite-area {
-  flex: 1;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 280px;
   display: flex;
   align-items: flex-end;
-  justify-content: flex-end;   /* 右对齐，与工具条右侧齐 */
-  pointer-events: none;        /* 整个区域不拦截鼠标，点击穿透到桌面 */
-}
-
-.sprite {
-  height: 220px;
-  width: auto;
-  object-fit: contain;
+  justify-content: flex-end;
   pointer-events: none;
-  display: block;
 }
 
-/* ── 工具条容器 ── */
-.toolbar {
+/* ── 动画容器：与 AnimView 同宽，flex 列排列 ── */
+.anim-container {
+  position: relative;
   display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 55px;
-  padding: 0 10px 0 0;
-  background: #5F4949;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #5F4949;
-  user-select: none;
+  flex-direction: column;
+  align-items: stretch;
+  width: 150px;
+  pointer-events: auto;
 }
 
-/* ── 左侧拖拽区 ── */
-.drag-handle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 100%;
-  cursor: grab;
-  flex-shrink: 0;
-  border-radius: 12px 0 0 12px;
-}
-.drag-handle:active { cursor: grabbing; }
-
-.drag-dots {
-  display: block;
-  width: 4px;
-  height: 20px;
-  background-image: radial-gradient(circle, rgba(255,255,255,0.35) 1.5px, transparent 1.5px);
-  background-size: 4px 6px;
-}
-
-/* ── 按钮 ── */
-.tb-btn {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 5px 10px;
-  border-radius: 7px;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.07);
-  color: #e0e0e0;
-  font-size: 12px;
-  font-family: inherit;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.12s, border-color 0.12s;
-  flex-shrink: 0;
-}
-.tb-btn:hover:not(:disabled) {
-  background: rgba(255,255,255,0.14);
-  border-color: rgba(255,255,255,0.25);
-}
-.tb-btn:active:not(:disabled) {
-  background: rgba(255,255,255,0.2);
-}
-.tb-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-.tb-btn--primary {
-  background: rgba(37, 99, 235, 0.8);
-  border-color: rgba(59, 130, 246, 0.6);
-  color: #fff;
-}
-.tb-btn--primary:hover:not(:disabled) {
-  background: rgba(37, 99, 235, 1);
-  border-color: rgba(96, 165, 250, 0.8);
-}
-
-/* ── 文件信息 ── */
-.tb-info {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  overflow: hidden;
-}
-
-.tb-filename {
-  font-size: 12px;
-  font-weight: 500;
-  color: #e0e0e0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 160px;
-}
-
-.tb-meta {
-  font-size: 11px;
-  color: rgba(255,255,255,0.4);
-  white-space: nowrap;
-}
-
-/* ── 错误提示 ── */
-.tb-error {
-  font-size: 14px;
-  cursor: default;
-}
-
-/* ── 弹性空间 ── */
-.tb-spacer { flex: 1; }
-
-/* ── 按键计数 ── */
-.tb-keycount {
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  color: rgba(255, 255, 255, 0.45);
-  min-width: 32px;
-  text-align: right;
-  flex-shrink: 0;
-}
+/* ── AnimView ── */
 .anim-view {
-  position: absolute;
-  right: 0px;
-  bottom: 0px;
-  width: 220px;
-  height: 220px;
-  pointer-events: none;
+  position: relative;
+  width: 150px;
+  height: 150px;
+  cursor: grab;
 }
+.anim-view:active { cursor: grabbing; }
 
 .anim-layer {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
-  height: 100%;
+  bottom: 25px;
   object-fit: contain;
-  object-position: bottom center;
+  object-position: center calc(100%);
   pointer-events: none;
 }
 
-.anim-layer--left {
-  z-index: 1;
+.anim-layer--left { z-index: 1; }
+.anim-layer--right { z-index: 2; }
+
+/* ── 工具条 ── */
+.anim-toolbar {
+  position: absolute;
+  bottom: 0;
+  left: calc(20% - 10px);
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 30px;
+  padding: 0 5px;
+  background: transparent;
+  user-select: none;
 }
 
-.anim-layer--right {
-  z-index: 2;
+.toolbar-keycount {
+  font-size: 11px;
+  font-weight: 500;
+  color: #333;
+  font-variant-numeric: tabular-nums;
+  background: #e8e0d8;
+  padding: 3px 14px;
+  border-radius: 6px;
+  min-width: 44px;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.toolbar-menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 27px;
+  height: 27px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.toolbar-menu-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+/* ── 菜单面板：绝对定位在 sprite-area 正下方（top = BASE_HEIGHT） ── */
+.menu-panel {
+  position: absolute;
+  top: 280px;
+  right: 0;
+  width: 150px;
+  background: #8B6F6F;
+  overflow: hidden;
+}
+
+.menu-header {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.menu-tabs {
+  display: flex;
+  flex: 1;
+}
+
+.tab {
+  flex: 1;
+  padding: 9px 0;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: center;
+  transition: color 0.12s, background 0.12s;
+}
+.tab:hover {
+  color: rgba(255, 255, 255, 0.75);
+}
+.tab--active {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.45);
+  cursor: pointer;
+  transition: color 0.12s;
+  flex-shrink: 0;
+}
+.close-btn:hover {
+  color: #fff;
+}
+
+.menu-content {
+  height: 180px;
+  padding: 8px;
 }
