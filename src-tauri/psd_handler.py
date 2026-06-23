@@ -5,6 +5,7 @@ Usage:
   python psd_handler.py parse <psd_path>
   python psd_handler.py export <psd_path> <output_path> <png|jpg> [layer_id ...]
   python psd_handler.py transform <psd_path> <layer_id>
+  python psd_handler.py composite <psd_path> <output_path> <visible_names_json>
 
 All results are written to stdout as JSON.
 """
@@ -110,6 +111,7 @@ def composite_layers(psd_path: str, layer_ids: list[int], output_path: str, fmt:
     image.save(output_path)
 
     return {"path": str(output_path)}
+
 
 
 def main() -> None:

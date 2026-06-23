@@ -52,56 +52,67 @@ enum TransformOutput {
     Err { error: String },
 }
 
-/// Locate the Python script.  Looks next to the current executable first,
-/// then falls back to the Cargo manifest directory (dev mode).
-fn python_script_path() -> Result<std::path::PathBuf> {
-    let base = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
-        .unwrap_or_else(|| Path::new(".").to_path_buf());
-    let mut path = base.join("psd_handler.py");
-    if !path.exists() {
-        path = Path::new(env!("CARGO_MANIFEST_DIR")).join("psd_handler.py");
+/// Locate the bundled PyInstaller sidecar (`psd_handler`).
+///
+/// In a packaged app Tauri places the sidecar next to the main executable with
+/// the target-triple suffix stripped. In dev/test we fall back to
+/// `<manifest>/binaries/psd_handler-<triple>` (the path the build scripts emit).
+fn psd_handler_binary() -> Result<std::path::PathBuf> {
+    let exe_name = if cfg!(target_os = "windows") { "psd_handler.exe" } else { "psd_handler" };
+
+    // 1. Next to the current executable (packaged app).
+    if let Some(dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())) {
+        let candidate = dir.join(exe_name);
+        if candidate.exists() {
+            return Ok(candidate);
+        }
     }
-    Ok(path)
+
+    // 2. Dev/test: binaries/psd_handler-<triple>[.exe]
+    let triple = env!("BUILD_TARGET_TRIPLE");
+    let dev_name = if cfg!(target_os = "windows") {
+        format!("psd_handler-{triple}.exe")
+    } else {
+        format!("psd_handler-{triple}")
+    };
+    let dev_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("binaries").join(&dev_name);
+    if dev_path.exists() {
+        return Ok(dev_path);
+    }
+
+    Err(anyhow::anyhow!(
+        "psd_handler sidecar not found (looked next to the executable and at {}). \
+         Build it with scripts/build_sidecar.sh (or .bat on Windows).",
+        dev_path.display()
+    ))
 }
 
-fn python_interpreter() -> &'static str {
-    if cfg!(target_os = "windows") {
-        "python"
-    } else {
-        "python3"
+/// Run the `psd_handler` sidecar with the given args, returning its stdout on success.
+fn run_sidecar(args: &[String]) -> Result<String> {
+    let binary = psd_handler_binary()?;
+    let output = Command::new(&binary)
+        .args(args)
+        .output()
+        .with_context(|| format!("Failed to launch sidecar {}", binary.display()))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow::anyhow!("psd_handler error: {}", stderr));
     }
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
 /// Parse a PSD file and return metadata for all layers.
 pub fn parse_psd<P: AsRef<Path>>(path: &P) -> Result<(u32, u32, Vec<LayerInfo>)> {
-    let script = python_script_path()?;
-    let psd_path = path.as_ref().to_string_lossy().to_string();
-
-    let output = Command::new(python_interpreter())
-        .arg(&script)
-        .arg("parse")
-        .arg(&psd_path)
-        .output()
-        .context("Failed to launch Python process")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(anyhow::anyhow!("Python error: {}", stderr));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let parsed: ParseOutput = serde_json::from_str(&stdout).context("Failed to parse Python output")?;
-
+    let stdout = run_sidecar(&["parse".into(), path.as_ref().display().to_string()])?;
+    let parsed: ParseOutput = serde_json::from_str(&stdout).context("Failed to parse psd_handler output")?;
     Ok((parsed.width, parsed.height, parsed.layers))
 }
 
 /// Composite only the specified layers into a single PNG/JPEG file.
 /// Returns the output file path.
 pub fn export_layers<P: AsRef<Path>>(psd_path: &P, layer_ids: &[usize], output_path: &P, format: ExportFormat) -> Result<String> {
-    let script = python_script_path()?;
-
     let mut args: Vec<String> = vec![
         "export".into(),
         psd_path.as_ref().display().to_string(),
@@ -110,19 +121,8 @@ pub fn export_layers<P: AsRef<Path>>(psd_path: &P, layer_ids: &[usize], output_p
     ];
     args.extend(layer_ids.iter().map(|id| id.to_string()));
 
-    let output = Command::new(python_interpreter())
-        .arg(&script)
-        .args(&args)
-        .output()
-        .context("Failed to launch Python process")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(anyhow::anyhow!("Python error: {}", stderr));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let parsed: ExportOutput = serde_json::from_str(&stdout).context("Failed to parse Python export output")?;
+    let stdout = run_sidecar(&args)?;
+    let parsed: ExportOutput = serde_json::from_str(&stdout).context("Failed to parse psd_handler export output")?;
 
     Ok(parsed.path)
 }
@@ -130,27 +130,13 @@ pub fn export_layers<P: AsRef<Path>>(psd_path: &P, layer_ids: &[usize], output_p
 /// Return a layer's sprite size and the offset of its rect center from the
 /// canvas center (origin = canvas center, in pixels).
 pub fn layer_transform<P: AsRef<Path>>(psd_path: &P, layer_id: usize) -> Result<LayerTransform> {
-    let script = python_script_path()?;
+    let stdout = run_sidecar(&["transform".into(), psd_path.as_ref().display().to_string(), layer_id.to_string()])?;
 
-    let output = Command::new(python_interpreter())
-        .arg(&script)
-        .arg("transform")
-        .arg(psd_path.as_ref().display().to_string())
-        .arg(layer_id.to_string())
-        .output()
-        .context("Failed to launch Python process")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(anyhow::anyhow!("Python error: {}", stderr));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let parsed: TransformOutput = serde_json::from_str(&stdout).context("Failed to parse Python transform output")?;
+    let parsed: TransformOutput = serde_json::from_str(&stdout).context("Failed to parse psd_handler transform output")?;
 
     match parsed {
         TransformOutput::Ok(transform) => Ok(transform),
-        TransformOutput::Err { error } => Err(anyhow::anyhow!("Python error: {}", error)),
+        TransformOutput::Err { error } => Err(anyhow::anyhow!("psd_handler error: {}", error)),
     }
 }
 
@@ -206,7 +192,7 @@ mod tests {
         let psd_dir = env::current_dir().unwrap().join("..").join("psd");
         let psd_path = psd_dir.join("示例psd.psd");
 
-        let (width, height, layers) = parse_psd(&psd_path).unwrap();
+        let (_, _, layers) = parse_psd(&psd_path).unwrap();
 
         let export_layer_names = ["1", "2-1", "2-2", "动作参考", "示意图"];
 

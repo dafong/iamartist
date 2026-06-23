@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['psd_composite.py'],
+    ['/Users/lunar/Documents/work_self/iamartist/src-tauri/psd_handler.py'],
     pathex=[],
     binaries=[],
     datas=[],
@@ -22,7 +22,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='psd_composite',
+    name='psd_handler',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

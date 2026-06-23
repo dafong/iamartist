@@ -39,7 +39,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "externalBin": ["binaries/psd_composite"]
+    "externalBin": ["binaries/psd_handler"]
   },
   "plugins": {
     "shell": {

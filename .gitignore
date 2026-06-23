@@ -6,3 +6,4 @@ public/.DS_Store
 .DS_Store
 src-python/build
 src-python/.venv
+reference/Assembly-CSharp/obj

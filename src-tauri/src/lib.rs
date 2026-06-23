@@ -46,25 +46,6 @@ pub struct CompositeRequest {
 }
 
 #[tauri::command]
-async fn export_composite(app: tauri::AppHandle, req: CompositeRequest) -> Result<String, String> {
-    use tauri_plugin_shell::ShellExt;
-    let names_json = serde_json::to_string(&req.visible_layer_names).map_err(|e| e.to_string())?;
-    let output = app
-        .shell()
-        .sidecar("psd_composite")
-        .map_err(|e| e.to_string())?
-        .args([&req.psd_path, &req.output_path, &names_json])
-        .output()
-        .await
-        .map_err(|e| e.to_string())?;
-    if output.status.success() {
-        Ok(req.output_path)
-    } else {
-        Err(String::from_utf8_lossy(&output.stderr).to_string())
-    }
-}
-
-#[tauri::command]
 fn read_file(path: String) -> Result<String, String> {
     match fs::read_to_string(&path) {
         Ok(content) => Ok(content),
@@ -123,7 +104,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             parse_psd,
             export_layers,
-            export_composite,
             smb_upload,
             smb_test,
             read_file,
