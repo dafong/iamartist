@@ -81,7 +81,7 @@ def layer_transform(psd_path: str, layer_id: int) -> dict:
         "width": w,
         "height": h,
         "offset_x": offset_x,
-        "offset_y": offset_y,
+        "offset_y": offset_y
     }
 
 

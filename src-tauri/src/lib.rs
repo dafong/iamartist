@@ -1,11 +1,14 @@
 mod psd_handler;
 mod smb_handler;
 
-use std::fs;
+use std::{env, fs};
 
 use psd_handler::{ExportFormat, LayerInfo};
 use serde::{Deserialize, Serialize};
 use smb_handler::SmbConfig;
+use tracing::{error, info};
+
+use self::psd_handler::{export_layers, LayerTransform};
 
 // ─── PSD commands ────────────────────────────────────────────────────────────
 
@@ -14,12 +17,43 @@ pub struct PsdMeta {
     pub width: u32,
     pub height: u32,
     pub layers: Vec<LayerInfo>,
+    pub exports: Option<ExportLayer>,
+    pub mark_trans: Option<LayerTransform>,
+}
+
+#[derive(Serialize)]
+pub struct ExportLayer {
+    pub name: String,
+    pub output: Option<String>,
 }
 
 #[tauri::command]
-fn parse_psd(path: String) -> Result<PsdMeta, String> {
+fn export_psd(path: String) -> Result<PsdMeta, String> {
     let (width, height, layers) = psd_handler::parse_psd(&path).map_err(|e| e.to_string())?;
-    Ok(PsdMeta { width, height, layers })
+
+    let meta = PsdMeta {
+        width,
+        height,
+        layers,
+        exports: None,
+        mark_trans: None,
+    };
+
+    let export_layer_names = ["1", "2-1", "2-2", "动作参考", "示意图"];
+
+    let _ = &export_layer_names.iter().for_each(|name| {
+        if let Some(layer) = &meta.layers.iter().find(|layer| &layer.name == name) {
+            let output_name = format!("{}.png", name);
+            match export_layers(&path, &[layer.id], &output_name, ExportFormat::Png) {
+                Ok(output) => info!("[导出图层] [{}] 成功 => {}", name, output),
+                Err(e) => error!("[导出图层] [{}] 失败=>{}", name, e),
+            }
+        } else {
+            info!("[导出图层] [{}] 不存在", name)
+        }
+    });
+
+    Ok(meta)
 }
 
 #[derive(Deserialize)]
@@ -28,12 +62,6 @@ pub struct ExportRequest {
     pub layer_ids: Vec<usize>,
     pub output_path: String,
     pub format: ExportFormat,
-}
-
-#[tauri::command]
-fn export_layers(req: ExportRequest) -> Result<String, String> {
-    let path = psd_handler::export_layers(&req.psd_path, &req.layer_ids, &req.output_path, req.format).map_err(|e| e.to_string())?;
-    Ok(path)
 }
 
 // ─── Composite export command ────────────────────────────────────────────────
@@ -101,14 +129,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![
-            parse_psd,
-            export_layers,
-            smb_upload,
-            smb_test,
-            read_file,
-            write_file
-        ])
+        .invoke_handler(tauri::generate_handler![export_psd, smb_upload, smb_test, read_file, write_file])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

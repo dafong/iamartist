@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::Command;
+use tempfile::tempdir;
 
 /// Metadata for a single layer.
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -112,11 +113,13 @@ pub fn parse_psd<P: AsRef<Path>>(path: &P) -> Result<(u32, u32, Vec<LayerInfo>)>
 
 /// Composite only the specified layers into a single PNG/JPEG file.
 /// Returns the output file path.
-pub fn export_layers<P: AsRef<Path>>(psd_path: &P, layer_ids: &[usize], output_path: &P, format: ExportFormat) -> Result<String> {
+pub fn export_layers<P: AsRef<Path>>(psd_path: &P, layer_ids: &[usize], name: &str, format: ExportFormat) -> Result<String> {
+    let dir = tempdir()?;
+    let output = dir.path().join(name);
     let mut args: Vec<String> = vec![
         "export".into(),
         psd_path.as_ref().display().to_string(),
-        output_path.as_ref().display().to_string(),
+        output.as_path().display().to_string(),
         format.extension().to_string(),
     ];
     args.extend(layer_ids.iter().map(|id| id.to_string()));
@@ -198,12 +201,10 @@ mod tests {
 
         export_layer_names.iter().for_each(|name| {
             if let Some(layer) = layers.iter().find(|layer| &layer.name == name) {
-                let output_dir = psd_dir.join("export");
-                let _ = fs::create_dir_all(&output_dir);
-                let output_file = output_dir.join(format!("{}.png", name));
-                match export_layers(&psd_path, &[layer.id], &output_file, ExportFormat::Png) {
-                    Ok(_) => info!("[导出图层] [{}] 成功", name),
-                    Err(e) => error!("[导出图层] [{}] 失败=>{}", name, e),
+                let out_name = format!("{}.png", name);
+                match export_layers(&psd_path, &[layer.id], &out_name, ExportFormat::Png) {
+                    Ok(_) => info!("[导出图层] [{}] 成功", out_name),
+                    Err(e) => error!("[导出图层] [{}] 失败=>{}", out_name, e),
                 }
             } else {
                 info!("[导出图层] [{}] 不存在", name)
