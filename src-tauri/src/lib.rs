@@ -132,3 +132,14 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[cfg(test)]
+pub fn setup_tracing_for_test() {
+    let _ = tracing_subscriber::fmt()
+        .without_time()
+        .with_target(false)
+        .with_file(true)
+        .with_line_number(true)
+        .with_test_writer()
+        .try_init();
+}

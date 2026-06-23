@@ -4,6 +4,7 @@ PSD handler – called by the Tauri (Rust) side via subprocess.
 Usage:
   python psd_handler.py parse <psd_path>
   python psd_handler.py export <psd_path> <output_path> <png|jpg> [layer_id ...]
+  python psd_handler.py transform <psd_path> <layer_id>
 
 All results are written to stdout as JSON.
 """
@@ -39,6 +40,48 @@ def parse_psd(psd_path: str) -> dict:
             }
         )
     return {"width": psd.width, "height": psd.height, "layers": layers}
+
+
+def layer_transform(psd_path: str, layer_id: int) -> dict:
+    """Return a layer's sprite size and the offset of its rect center from the canvas center.
+
+    The offset uses the canvas center as the origin and the sprite rect center as the
+    measured point, in pixels:
+      offset_x: positive to the right of canvas center
+      offset_y: positive above canvas center (image y is flipped to an up-positive axis)
+
+    Returns {id, name, width, height, offset_x, offset_y}.
+    """
+    psd = PSDImage.open(psd_path)
+    descendants = list(psd.descendants())
+    if layer_id < 0 or layer_id >= len(descendants):
+        return {"error": f"Layer id {layer_id} out of range (0..{len(descendants) - 1})"}
+
+    layer = descendants[layer_id]
+    if hasattr(layer, "kind") and layer.kind == "pixel":
+        x1, y1, x2, y2 = layer.bbox
+        top, left, w, h = y1, x1, x2 - x1, y2 - y1
+    else:
+        top, left = layer.top, layer.left
+        w, h = layer.width, layer.height
+
+    # Sprite rect center in image coordinates (origin top-left, y down).
+    sprite_cx = left + w / 2
+    sprite_cy = top + h / 2
+    canvas_cx = psd.width / 2
+    canvas_cy = psd.height / 2
+
+    offset_x = sprite_cx - canvas_cx
+    offset_y = canvas_cy - sprite_cy  # flip to up-positive
+
+    return {
+        "id": layer_id,
+        "name": layer.name,
+        "width": w,
+        "height": h,
+        "offset_x": offset_x,
+        "offset_y": offset_y,
+    }
 
 
 def composite_layers(psd_path: str, layer_ids: list[int], output_path: str, fmt: str) -> dict:
@@ -86,6 +129,12 @@ def main() -> None:
         fmt = sys.argv[4]
         layer_ids = [int(x) for x in sys.argv[5:]]
         result = composite_layers(psd_path, layer_ids, output_path, fmt)
+        print(json.dumps(result))
+
+    elif cmd == "transform":
+        psd_path = sys.argv[2]
+        layer_id = int(sys.argv[3])
+        result = layer_transform(psd_path, layer_id)
         print(json.dumps(result))
 
     else:

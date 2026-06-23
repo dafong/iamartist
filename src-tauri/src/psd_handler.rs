@@ -29,6 +29,29 @@ struct ExportOutput {
     path: String,
 }
 
+/// A layer's sprite size and the offset of its rect center from the canvas center.
+///
+/// `offset_x` is positive to the right of canvas center; `offset_y` is positive
+/// above canvas center (the image y axis is flipped to an up-positive axis).
+/// Values are in pixels and may be fractional.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LayerTransform {
+    pub id: usize,
+    pub name: String,
+    pub width: u32,
+    pub height: u32,
+    pub offset_x: f64,
+    pub offset_y: f64,
+}
+
+/// Structure expected from Python's `transform` command (success or error).
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum TransformOutput {
+    Ok(LayerTransform),
+    Err { error: String },
+}
+
 /// Locate the Python script.  Looks next to the current executable first,
 /// then falls back to the Cargo manifest directory (dev mode).
 fn python_script_path() -> Result<std::path::PathBuf> {
@@ -104,6 +127,33 @@ pub fn export_layers<P: AsRef<Path>>(psd_path: &P, layer_ids: &[usize], output_p
     Ok(parsed.path)
 }
 
+/// Return a layer's sprite size and the offset of its rect center from the
+/// canvas center (origin = canvas center, in pixels).
+pub fn layer_transform<P: AsRef<Path>>(psd_path: &P, layer_id: usize) -> Result<LayerTransform> {
+    let script = python_script_path()?;
+
+    let output = Command::new(python_interpreter())
+        .arg(&script)
+        .arg("transform")
+        .arg(psd_path.as_ref().display().to_string())
+        .arg(layer_id.to_string())
+        .output()
+        .context("Failed to launch Python process")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow::anyhow!("Python error: {}", stderr));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: TransformOutput = serde_json::from_str(&stdout).context("Failed to parse Python transform output")?;
+
+    match parsed {
+        TransformOutput::Ok(transform) => Ok(transform),
+        TransformOutput::Err { error } => Err(anyhow::anyhow!("Python error: {}", error)),
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 #[serde(rename_all = "lowercase")]
 pub enum ExportFormat {
@@ -124,33 +174,74 @@ impl ExportFormat {
 mod tests {
     // Can be re-implemented with a test PSD file when needed.
 
-    use std::env;
+    use std::{env, fs};
+
+    use tracing::{error, info};
 
     use crate::psd_handler::ExportFormat;
+    use crate::setup_tracing_for_test;
 
-    use super::{export_layers, parse_psd};
+    use super::{export_layers, layer_transform, parse_psd};
 
     #[test]
     fn test_parse_psd() {
-        let path = env::current_dir().unwrap().join("..").join("psd").join("童年稻草堆.psd");
+        setup_tracing_for_test();
+        let path = env::current_dir().unwrap().join("..").join("psd").join("示例psd.psd");
 
-        let (width, height, _) = parse_psd(&path).unwrap();
-        println!("psd size is {}x{}", width, height);
-    }
-    #[test]
-    fn test_parse_export() {
-        let path = env::current_dir().unwrap().join("..").join("psd").join("童年稻草堆.psd");
-        let (_, _, layers) = parse_psd(&path).unwrap();
+        let (width, height, layers) = parse_psd(&path).unwrap();
+        println!("[psd] dimension is {}x{}", width, height);
         println!(
             "{}",
             layers
                 .iter()
-                .map(|l| format!("[{}]={}", &l.name, l.id))
+                .map(|l| format!("layer [{}] = {}", l.id, &l.name))
                 .collect::<Vec<String>>()
                 .join("\n")
         );
-        let output = env::current_dir().unwrap().join("..").join("export.png");
-        let ids = layers.iter().map(|l| l.id).collect::<Vec<usize>>();
-        let _ = export_layers(&path, &ids, &output, ExportFormat::Png).expect("export layers error");
+    }
+
+    #[test]
+    fn test_parse_export() {
+        setup_tracing_for_test();
+        let psd_dir = env::current_dir().unwrap().join("..").join("psd");
+        let psd_path = psd_dir.join("示例psd.psd");
+
+        let (width, height, layers) = parse_psd(&psd_path).unwrap();
+
+        let export_layer_names = ["1", "2-1", "2-2", "动作参考", "示意图"];
+
+        export_layer_names.iter().for_each(|name| {
+            if let Some(layer) = layers.iter().find(|layer| &layer.name == name) {
+                let output_dir = psd_dir.join("export");
+                let _ = fs::create_dir_all(&output_dir);
+                let output_file = output_dir.join(format!("{}.png", name));
+                match export_layers(&psd_path, &[layer.id], &output_file, ExportFormat::Png) {
+                    Ok(_) => info!("[导出图层] [{}] 成功", name),
+                    Err(e) => error!("[导出图层] [{}] 失败=>{}", name, e),
+                }
+            } else {
+                info!("[导出图层] [{}] 不存在", name)
+            }
+        });
+    }
+
+    #[test]
+    fn test_layer_transform() {
+        setup_tracing_for_test();
+        let psd_dir = env::current_dir().unwrap().join("..").join("psd");
+        let psd_path = psd_dir.join("示例psd.psd");
+
+        let (width, height, layers) = parse_psd(&psd_path).unwrap();
+        let id = layers.iter().find(|layer| layer.name == "2-2").unwrap().id;
+
+        let transform = layer_transform(&psd_path, id).unwrap();
+        let msg = format!(
+            r#"
+        offset => ({},{})
+        size   => ({},{})
+        bgsize => ({},{})"#,
+            transform.offset_x, transform.offset_y, transform.width, transform.height, width, height
+        );
+        println!("{}", msg);
     }
 }
