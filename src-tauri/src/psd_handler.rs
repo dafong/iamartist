@@ -1,9 +1,8 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
-use tempfile::tempdir;
-
+use tempfile::TempDir;
 /// Metadata for a single layer.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LayerInfo {
@@ -113,21 +112,22 @@ pub fn parse_psd<P: AsRef<Path>>(path: &P) -> Result<(u32, u32, Vec<LayerInfo>)>
 
 /// Composite only the specified layers into a single PNG/JPEG file.
 /// Returns the output file path.
-pub fn export_layers<P: AsRef<Path>>(psd_path: &P, layer_ids: &[usize], name: &str, format: ExportFormat) -> Result<String> {
-    let dir = tempdir()?;
-    let output = dir.path().join(name);
+pub fn export_layers<P: AsRef<Path>>(psd_path: &P, layer_ids: &[usize], tempdir: &TempDir, name: &str, format: ExportFormat) -> Result<PathBuf> {
+    let output = tempdir.path().join(name);
+
     let mut args: Vec<String> = vec![
         "export".into(),
         psd_path.as_ref().display().to_string(),
-        output.as_path().display().to_string(),
+        output.display().to_string(),
         format.extension().to_string(),
     ];
+
     args.extend(layer_ids.iter().map(|id| id.to_string()));
 
     let stdout = run_sidecar(&args)?;
-    let parsed: ExportOutput = serde_json::from_str(&stdout).context("Failed to parse psd_handler export output")?;
+    let _: ExportOutput = serde_json::from_str(&stdout).context("Failed to parse psd_handler export output")?;
 
-    Ok(parsed.path)
+    Ok(output)
 }
 
 /// Return a layer's sprite size and the offset of its rect center from the
@@ -163,8 +163,9 @@ impl ExportFormat {
 mod tests {
     // Can be re-implemented with a test PSD file when needed.
 
-    use std::{env, fs};
+    use std::env;
 
+    use tempfile::tempdir;
     use tracing::{error, info};
 
     use crate::psd_handler::ExportFormat;
@@ -198,12 +199,13 @@ mod tests {
         let (_, _, layers) = parse_psd(&psd_path).unwrap();
 
         let export_layer_names = ["1", "2-1", "2-2", "动作参考", "示意图"];
+        let tmp_dir = tempdir().unwrap();
 
         export_layer_names.iter().for_each(|name| {
             if let Some(layer) = layers.iter().find(|layer| &layer.name == name) {
                 let out_name = format!("{}.png", name);
-                match export_layers(&psd_path, &[layer.id], &out_name, ExportFormat::Png) {
-                    Ok(_) => info!("[导出图层] [{}] 成功", out_name),
+                match export_layers(&psd_path, &[layer.id], &tmp_dir, &out_name, ExportFormat::Png) {
+                    Ok(output) => info!("[导出图层] [{}] 成功", output.display().to_string()),
                     Err(e) => error!("[导出图层] [{}] 失败=>{}", out_name, e),
                 }
             } else {

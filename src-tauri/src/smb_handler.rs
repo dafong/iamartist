@@ -18,7 +18,7 @@ pub struct SmbConfig {
 
 // ─── Public API ────────────────────────────────────────────────────────────────
 
-pub fn upload_files(config: &SmbConfig, local_files: &[String]) -> Result<Vec<(String, String)>> {
+pub fn upload_files(config: &SmbConfig, local_files: &[&str]) -> Result<Vec<(String, String)>> {
     #[cfg(target_os = "windows")]
     return platform::upload(config, local_files);
 
@@ -47,7 +47,7 @@ mod platform {
     use super::*;
 
     /// Authenticate the share once, then write via UNC paths.
-    pub fn upload(config: &SmbConfig, local_files: &[String]) -> Result<Vec<(String, String)>> {
+    pub fn upload(config: &SmbConfig, local_files: &[&str]) -> Result<Vec<(String, String)>> {
         let unc = unc_share(config);
         net_use(config, &unc)?;
 
@@ -59,7 +59,7 @@ mod platform {
             let name = file_name(local)?;
             let dst = remote_base.join(name);
             std::fs::copy(local, &dst).with_context(|| format!("copy → {}", dst.display()))?;
-            results.push((local.clone(), dst.to_string_lossy().into_owned()));
+            results.push((local.to_string(), dst.to_string_lossy().into_owned()));
         }
         Ok(results)
     }
@@ -108,7 +108,7 @@ mod platform {
 mod platform {
     use super::*;
 
-    pub fn upload(config: &SmbConfig, local_files: &[String]) -> Result<Vec<(String, String)>> {
+    pub fn upload(config: &SmbConfig, local_files: &[&str]) -> Result<Vec<(String, String)>> {
         let mp = MountPoint::mount(config)?;
 
         let remote_base = mp.path.join(config.remote_dir.trim_matches('/'));
@@ -119,7 +119,7 @@ mod platform {
             let name = file_name(local)?;
             let dst = remote_base.join(name);
             std::fs::copy(local, &dst).with_context(|| format!("copy → {}", dst.display()))?;
-            results.push((local.clone(), dst.to_string_lossy().into_owned()));
+            results.push((local.to_string(), dst.to_string_lossy().into_owned()));
         }
         Ok(results)
         // MountPoint::drop unmounts automatically
@@ -269,9 +269,17 @@ mod tests {
             remote_dir: "unity资源".to_string(),
             workgroup: None,
         };
-        let upload_file = env::current_dir().unwrap().join("..").join("export.png");
+        let upload_file = env::current_dir().unwrap().join("..").join("psd").join("export");
+        let files = ["1.png", "2-1.png", "2-2.png", "动作参考.png", "示意图.png"];
 
-        upload_files(&cfg, &vec![upload_file.display().to_string()]).unwrap();
+        let uploads = files
+            .map(|f| upload_file.join(f))
+            .map(|pb| pb.display().to_string())
+            .into_iter()
+            .collect::<Vec<String>>();
+        let uploads: Vec<&str> = uploads.iter().map(String::as_str).collect();
+
+        upload_files(&cfg, &uploads).unwrap();
     }
 
     #[test]
